@@ -1,61 +1,111 @@
 import {disassemble} from './disassemble';
 import * as table from './romanization_table';
-import {getAllCombinations} from './util';
 
-// 한글이름 -> 영문이름 변환 함수
-function romanize(sentence: string): string[] {
-    return [...new Set(sentence.split(' ').map(romanizeWord)[0])];
+function nameRule(romanizeArr: string[]): {
+    lastName: string[];
+    firstName: string[][];
+} {
+    let lastName: string[] = [];
+    let firstName: string[][] = [];
+
+    romanizeArr.forEach((chars, index) => {
+        // lastName, firstName 예외처리
+        if (index === 0) {
+            if (/^-i$/.test(chars)) {
+                // '이'
+                lastName.push('lee');
+            } else if (/^bag$/.test(chars)) {
+                // '박'
+                lastName.push('park', 'bak');
+            } else if (/^gim$/.test(chars)) {
+                // '김'
+                lastName.push('kim');
+            } else if (/eo$/.test(chars)) {
+                // 'ㅓ'
+                lastName.push(chars[0] + 'uh', chars);
+            } else if (/^jo$/.test(chars)) {
+                // '조'
+                lastName.push('cho', 'joe', chars);
+            } else if (/^choe$/.test(chars)) {
+                // '최'
+                lastName.push('choi', chars, chars + 'i');
+            } else if (/^-o$/.test(chars)) {
+                // '오'
+                lastName.push('o', 'oh');
+            } else if (/^-wi$/.test(chars)) {
+                // '위'
+                lastName.push('wi', 'wie', 'we');
+            } else if (/^-u$/.test(chars)) {
+                // '우'
+                lastName.push(chars.replace(/^-u$/, 'woo'));
+            } else if (/^-yu/.test(chars)) {
+                // '유'
+                lastName.push(chars.replace(/^-yu/, '-yoo'), chars);
+            } else {
+                lastName.push(chars);
+            }
+        } else {
+            if (/^-i$/.test(chars)) {
+                // '이'
+                firstName.push(['yi', 'i', 'e', 'lee', 'yee']);
+            } else if (/(?<!a|e|i|o|u|y)eong/.test(chars)) {
+                // 자음 + 'ㅓ' + 'ㅇ'
+                firstName.push([chars, chars.replace(/eo/, 'u')]);
+            } else if (/(?=a|e|i|o|u|y)eong/.test(chars)) {
+                // 모음 + 'ㅓ' + 'ㅇ'
+                firstName.push([chars, chars.replace(/eo/, 'ou')]);
+            } else if (/-(?=a|o)/.test(chars)) {
+                // 'ㅏ', 'ㅗ' (ㅇ 뒤에 오는 경우)
+                firstName.push([chars.replace(/-/, '') + 'h', chars.replace(/-/, '')]);
+            } else if (/-u/.test(chars)) {
+                // '우'
+                firstName.push(['woo', chars.replace(/-/, '')]);
+            } else if (/.*ae.*/.test(chars)) {
+                // 'ㅐ'
+                firstName.push([chars, chars.replace(/ae/, 'ea')]);
+            } else if (/.*ye(?!o)/.test(chars)) {
+                // 'ㅖ'
+                firstName.push([chars, chars.replace(/ye(?!o)/, 'yae')]);
+            } else {
+                firstName.push([chars]);
+            }
+        }
+    });
+    // 성 마지막 '-' 삭제
+    lastName = lastName.map((item) => item.replace(/-/g, ''));
+
+    // 이름 마지막 '-' 삭제
+    firstName = firstName.map((subArr) => subArr.map((item) => item.replace(/-/g, '')));
+
+    return {lastName, firstName};
 }
 
-// 로마식 표현으로 변환 후 예외처리(된소리, 센소리, 기타)
+function romanize(sentence: string): string[][] {
+    const romanizeArr = sentence.split(' ').map(romanizeWord)[0];
+
+    const {lastName, firstName} = nameRule(romanizeArr);
+
+    const fullName = firstName.slice();
+    fullName.unshift(lastName);
+
+    return fullName;
+}
+
 function romanizeWord(word: string): string[] {
-    const arr = disassemble(word).map(romanizeChar);
-
-    const firstName = arr[0];
-    const middleNameArr = arr.slice(1, -1);
-    const middleName = getAllCombinations<string>(middleNameArr).map((x) => x.join(''));
-    const lastName = arr[arr.length - 1];
-
-    return getAllCombinations<string>([firstName, middleName, lastName]).map(
-        (x) =>
-            x
-                .join('')
-                .replace(/^gim|geem|keem/, 'kim') // 맨앞에 성이 '김' 인 경우 kim(으)로 변환한다.
-                .replace(/^-i/, 'lee') // 맨앞에 성이 '이' 인 경우 lee(으)로 변환한다.
-                .replace(/^-u|-oo/, 'woo') // 맨앞에 성이 '우' 인 경우 woo(으)로 변환한다.
-                .replace(/^-im/, 'im') // 맨앞에 성이 '임' 인 경우 im(으)로 변환한다.
-                .replace(/^bahk/, 'park') // 맨앞에 성이 '박' 인 경우 park(으)로 변환한다.
-                .replace(/^-(?=a|e|i|o|u|y)/, '') // 맨앞에 성이 'ㅇ' 자음으로 시작하는 경우 ''(으)로 변환한다. (알파벳 모음 + 반모음 y 까지 포함한다)
-                .replace(/jh/, 'cho') // 'ㅈ' + 'ㅗ'(h) 조합은 cho로 변환한다.
-                .replace(/o-i/, 'oi') // 'ㅗ'가 포함된 단어 다음 '이'가 오는 경우 (1)
-                .replace(/o-ee/, 'oyi') // 'ㅗ'가 포함된 단어 다음 '이'가 오는 경우 (2)
-                .replace(/-o/, 'o') // 자음 '오'가 단독으로 왔을 경우 (1)
-                .replace(/-h/, 'oh') // 자음 '오'가 단독으로 왔을 경우 (2)
-                .replace(/eel/, 'il') // 단어 '일'(eel)은 il로 변환한다.
-                .replace(/eeng/, 'ing') // 단어 '잉'의 모듬과 받침(eeng)은 ing로 변환한다.
-                .replace(/hh/, 'ho') // 단어 '호'는 ho로 변환한다.
-                .replace(/-/g, ''), // 최종적으로 제거되지 못한 'ㅇ'(-)을 제거 한다.
-    );
+    return disassemble(word).map(romanizeChar);
 }
 
-// 한글자 분해 후 로마표기로 변경
-function romanizeChar(char: string[], index: number): string[] {
-    console.log(char);
-
-    const initial = table.INITIALS[char[0]] || [];
-    let medial: string[] = table.MEDIALS[char[1]] || [];
-    const final = table.FINALS[char[2]] || [];
-
-    // 이름에 모음이 'ㅏ'이면서, 받침이 있는경우 'ㅏ'(ah)를 'ㅏ'(a)로 변환한다.
-    if (char[1] === 'ㅏ' && final.length !== 0 && index !== 0) {
-        medial = medial.filter((item) => item !== 'ah');
+// This romanizes a char (really an array) returned by disassemble()
+function romanizeChar(char: string[], index: number) {
+    if (char.length < 2) {
+        return table.INITIALS[char[0]] || table.MEDIALS[char[0]] || table.FINALS[char[0]] || char[0];
     }
 
-    let combineArr: string[][] = [];
+    let initial = table.INITIALS[char[0]];
+    const medial = table.MEDIALS[char[1]];
+    const final = table.FINALS[char[2]];
 
-    final.length === 0 ? (combineArr = [initial, medial]) : (combineArr = [initial, medial, final]);
-
-    return getAllCombinations<string>(combineArr).map((x) => x.join(''));
+    return [initial, medial, final].filter(Boolean).join('');
 }
 
 export {romanize};

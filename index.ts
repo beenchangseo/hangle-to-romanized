@@ -1,4 +1,4 @@
-import {romanize} from './lib/romanize';
-import {separateFirstLastName} from './lib/util';
+import {romanize as romanizeV2} from './lib/romanize';
+import {separateFirstLastName, getAllCombinations} from './lib/util';
 
-export {romanize, separateFirstLastName};
+export {separateFirstLastName, romanizeV2, getAllCombinations};
